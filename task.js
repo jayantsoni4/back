@@ -1,101 +1,126 @@
-require("dotenv").config(); // Load environment variables from .env file
-const express = require("express");
-const mongoose = require("mongoose");
-const bodyParser = require("body-parser");
+const express = require('express');
+const mongoose = require('mongoose');
+const bodyParser = require('body-parser');
+const cors = require('cors');
 
+// Initialize Express app
 const app = express();
-const PORT = 3001;
 
 // Middleware
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static("public"));
+app.use(bodyParser.json());
+app.use(cors());
 
-// Connect to MongoDB Atlas
-mongoose
-  .connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("Connected to MongoDB Atlas"))
-  .catch((error) => console.error("Error connecting to MongoDB Atlas:", error));
+// MongoDB Atlas connection
+const dbURI = process.env.MONGODB_URI;
 
-// Define a schema and model for tasks
+mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('Connected to MongoDB Atlas'))
+  .catch((err) => {
+    console.error('Failed to connect to MongoDB:', err);
+    process.exit(1); // Exit the process if DB connection fails
+  });
+
 const taskSchema = new mongoose.Schema({
-  task: String,
+  complaintNumber: String,
+  name: String,
+  email: String,
+  phone: String,
+  altPhone: String,
+  state: String,
+  city: String,
+  pincode: String,
+  location: String,
+  landmark: String,
+  product: String,
+  selectedModel: {
+    model: String,
+    capacity: String,
+    warranty: Number
+  },
+  serialNumber: String,
+  warrantyStatus: {
+    status: String,
+    expiryDate: String
+  },
+  purchaseDate: String,
+  installationDate: String,
+  callType: String,
+  condition: String,
+  callSource: String,
+  taskStatus: String,
+  assignEngineer: String,
+  contactNo: String,
+  dealer: String,
+  date: String,
+  asp: String,
+  aspName: String,
+  actionTaken: String,
+  customerFeedback: String,
+  enginnerNotes: String,
+  images: [String],
+  status: String,
+  complaintNotes: String,
+  additionalStatus: String,
+}, { timestamps: true }); // ✅ Adds createdAt and updatedAt fields
+
+// Create Task model
+const Task = mongoose.model('Task', taskSchema);
+
+// Routes
+
+// Add new task
+app.post('/tasks', async (req, res) => {
+  try {
+    const task = new Task(req.body);
+    await task.save();
+    res.status(201).json(task);
+  } catch (err) {
+    console.error("Error saving task:", err);
+    res.status(500).json({ error: "Failed to save task. Please try again." });
+  }
 });
 
-const Task = mongoose.model("Task", taskSchema);
-
-// Serve the main page
-app.get("/", async (req, res) => {
+// Get all tasks
+app.get('/tasks', async (req, res) => {
   try {
     const tasks = await Task.find();
-    res.send(`
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>To-Do App</title>
-        <style>
-          /* Add your CSS styles here */
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>To-Do App</h1>
-          <form action="/add" method="POST">
-            <input type="text" name="task" placeholder="Enter a new task" required />
-            <button type="submit">Add Task</button>
-          </form>
-          <ul>
-            ${tasks
-              .map(
-                (task) => `
-                <li>
-                  ${task.task}
-                  <form action="/delete" method="POST" style="margin: 0;">
-                    <input type="hidden" name="id" value="${task._id}" />
-                    <button type="submit" class="delete">Delete</button>
-                  </form>
-                </li>
-              `
-              )
-              .join("")}
-          </ul>
-        </div>
-      </body>
-      </html>
-    `);
-  } catch (error) {
-    res.status(500).send("Error loading tasks.");
+    res.status(200).json(tasks);
+  } catch (err) {
+    console.error("Error fetching tasks:", err);
+    res.status(500).json({ error: "Failed to fetch tasks. Please try again." });
   }
 });
 
-// Add a new task
-app.post("/add", async (req, res) => {
+// Update task
+app.put('/tasks/:id', async (req, res) => {
   try {
-    const { task } = req.body;
-    const newTask = new Task({ task });
-    await newTask.save();
-    res.redirect("/");
-  } catch (error) {
-    res.status(500).send("Error adding task.");
+    const task = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!task) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+    res.status(200).json(task);
+  } catch (err) {
+    console.error("Error updating task:", err);
+    res.status(500).json({ error: "Failed to update task. Please try again." });
   }
 });
 
-// Delete a task
-app.post("/delete", async (req, res) => {
+// Delete task
+app.delete('/tasks/:id', async (req, res) => {
   try {
-    const { id } = req.body;
-    await Task.findByIdAndDelete(id);
-    res.redirect("/");
-  } catch (error) {
-    res.status(500).send("Error deleting task.");
+    const task = await Task.findByIdAndDelete(req.params.id);
+    if (!task) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+    res.status(200).json({ message: 'Task deleted' });
+  } catch (err) {
+    console.error("Error deleting task:", err);
+    res.status(500).json({ error: "Failed to delete task. Please try again." });
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+// Start server
+const port = process.env.PORT || 5002;
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
 });
