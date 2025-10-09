@@ -1,29 +1,32 @@
+// index.js
 const express = require('express');
 const mongoose = require('mongoose');
-const bodyParser = require('body-parser');
 const cors = require('cors');
 const compression = require('compression');
 const NodeCache = require('node-cache');
+require('dotenv').config();
 
 // Initialize Express app
 const app = express();
-const cache = new NodeCache({ stdTTL: 60 }); // Cache for 60 seconds
+const cache = new NodeCache({ stdTTL: process.env.CACHE_TTL || 60 });
 
 // Middleware
-app.use(bodyParser.json());
-app.use(cors());
-app.use(compression()); // Compress all responses
+app.use(express.json());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true
+}));
+app.use(compression());
 
 // MongoDB Connection
-const dbURI = 'mongodb+srv://oshan:oshan%40work1234@cluster0.2txxi.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('✅ Connected to MongoDB Atlas'))
-  .catch((err) => {
+  .catch(err => {
     console.error('❌ Failed to connect to MongoDB:', err);
     process.exit(1);
   });
 
-// Schema & Indexing for faster query performance
+// Task Schema
 const taskSchema = new mongoose.Schema({
   complaintNumber: { type: String, index: true },
   name: String,
@@ -65,22 +68,19 @@ const taskSchema = new mongoose.Schema({
   status: String,
   complaintNotes: String,
   additionalStatus: String,
-  generatedOtps: String,
+  generatedOtps: String
 }, { timestamps: true });
 
 const Task = mongoose.model('Task', taskSchema);
 
+// Routes
 
-
-// ✅ Add new task
+// Add new task
 app.post('/tasks', async (req, res) => {
   try {
     const task = new Task(req.body);
     await task.save();
-
-    // Invalidate cache after adding new data
     cache.del('allTasks');
-
     res.status(201).json(task);
   } catch (err) {
     console.error('Error saving task:', err);
@@ -88,22 +88,17 @@ app.post('/tasks', async (req, res) => {
   }
 });
 
-
-
-// ✅ Get all tasks (with caching + lean for speed)
+// Get all tasks (with caching)
 app.get('/tasks', async (req, res) => {
   try {
-    // Check cache first
     const cachedTasks = cache.get('allTasks');
     if (cachedTasks) {
       console.log('⚡ Serving from cache');
       return res.status(200).json(cachedTasks);
     }
 
-    // Fetch from DB
-    const tasks = await Task.find().lean(); // .lean() makes it faster
+    const tasks = await Task.find().lean();
     cache.set('allTasks', tasks);
-
     console.log('🧠 Fetched from DB');
     res.status(200).json(tasks);
   } catch (err) {
@@ -112,17 +107,12 @@ app.get('/tasks', async (req, res) => {
   }
 });
 
-
-
-// ✅ Update task
+// Update task
 app.put('/tasks/:id', async (req, res) => {
   try {
     const task = await Task.findByIdAndUpdate(req.params.id, req.body, { new: true }).lean();
     if (!task) return res.status(404).json({ error: 'Task not found' });
-
-    // Invalidate cache after update
     cache.del('allTasks');
-
     res.status(200).json(task);
   } catch (err) {
     console.error('Error updating task:', err);
@@ -130,17 +120,12 @@ app.put('/tasks/:id', async (req, res) => {
   }
 });
 
-
-
-// ✅ Delete task
+// Delete task
 app.delete('/tasks/:id', async (req, res) => {
   try {
     const task = await Task.findByIdAndDelete(req.params.id);
     if (!task) return res.status(404).json({ error: 'Task not found' });
-
-    // Invalidate cache
     cache.del('allTasks');
-
     res.status(200).json({ message: 'Task deleted successfully' });
   } catch (err) {
     console.error('Error deleting task:', err);
@@ -148,10 +133,6 @@ app.delete('/tasks/:id', async (req, res) => {
   }
 });
 
-
-
-// Start Server
-const port = process.env.PORT || 5002;
-app.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
+// Start server
+const PORT = process.env.PORT || 5002;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
